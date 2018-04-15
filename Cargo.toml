@@ -1,0 +1,6 @@
+[package]
+name = "hang_man"
+version = "0.1.0"
+authors = ["Michael Smykowski <smycal@gmail.com>"]
+
+[dependencies]
