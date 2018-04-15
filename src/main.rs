@@ -1,5 +1,8 @@
+extern crate names;
+
 use std::io;
 use std::collections::HashSet;
+use names::{Generator, Name};
 
 #[derive(Debug)]
 struct Game<'a> {
@@ -24,7 +27,12 @@ impl<'a> Game<'a> {
 }
 
 fn main() {
-    let mut game = Game { word: vec!["h", "e", "l", "l", "o"], guesses: HashSet::new(), misses: 0, progress: vec!["".to_string(); 5] };
+    let mut generator = Generator::with_naming(Name::Plain);
+    let word = generator.next().unwrap();
+    let word = word.split("").collect::<Vec<&str>>();
+    let len = word.len();
+
+    let mut game = Game { word: word, guesses: HashSet::new(), misses: 0, progress: vec!["".to_string(); len] };
 
     loop {
         println!("Guess a letter");
