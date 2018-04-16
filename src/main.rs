@@ -5,34 +5,44 @@ use std::collections::HashSet;
 use names::{Generator, Name};
 
 #[derive(Debug)]
-struct Game<'a> {
-    word: Vec<&'a str>,
+struct Game {
+    word: Vec<String>,
     guesses: HashSet<String>,
     misses: u32,
     progress: Vec<String>,
 }
 
-impl<'a> Game<'a> {
+impl Game {
     fn increment_miss(&mut self) {
         self.misses += 1;
     }
 
-    fn update_progress(&mut self, guess: &str) {
+    fn update_progress(&mut self, guess: &String) {
         for (i, letter) in self.word.iter().enumerate() {
-            if letter == &guess {
-                self.progress[i] = letter.to_string();
+            if letter == guess {
+                self.progress[i] = letter.clone();
             }
         }
     }
 }
 
-fn main() {
+fn start_game() -> Game {
     let mut generator = Generator::with_naming(Name::Plain);
     let word = generator.next().unwrap();
-    let word = word.split("").collect::<Vec<&str>>();
-    let len = word.len();
+    let word = word.split("")
+                   .map(|c| c.to_string())
+                   .collect::<Vec<String>>();
 
-    let mut game = Game { word: word, guesses: HashSet::new(), misses: 0, progress: vec!["".to_string(); len] };
+    Game {
+        progress: vec!["".to_string(); word.len()],
+        word: word,
+        guesses: HashSet::new(),
+        misses: 0,
+      }
+}
+
+fn main() {
+    let mut game = start_game();
 
     loop {
         println!("Guess a letter");
@@ -41,11 +51,11 @@ fn main() {
 
         io::stdin().read_line(&mut guess).unwrap();
 
-        let guess = guess.trim();
+        let guess = guess.trim().to_string();
 
-        if game.guesses.insert(guess.to_string()) {
+        if game.guesses.insert(guess.clone()) {
             if game.word.contains(&guess) {
-                game.update_progress(guess);
+                game.update_progress(&guess);
             } else {
                 game.increment_miss();
             }
