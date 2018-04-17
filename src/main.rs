@@ -17,21 +17,42 @@ impl Game {
         self.misses += 1;
     }
 
-    fn update_progress(&mut self, guess: &String) {
-        for (i, letter) in self.word.iter().enumerate() {
-            if letter == guess {
-                self.progress[i] = letter.clone();
+    fn check_letter(&mut self, guess: &String) {
+        if self.word.contains(guess) {
+            for (i, letter) in self.word.iter().enumerate() {
+                if letter == guess {
+                    self.progress[i] = letter.clone();
+                }
             }
+        } else {
+            self.increment_miss();
         }
+    }
+
+    fn check_status(&self) -> Option<&str> {
+        if self.misses == 10 {
+            return Some("You lose");
+        } else if self.progress == self.word {
+            return Some("You win");
+        }
+
+        None
     }
 }
 
-fn start_game() -> Game {
+fn generate_word() -> Vec<String> {
     let mut generator = Generator::with_naming(Name::Plain);
-    let word = generator.next().unwrap();
-    let word = word.split("")
-                   .map(|c| c.to_string())
-                   .collect::<Vec<String>>();
+    generator.next()
+             .unwrap()
+             .split("")
+             .map(|c| c.to_string())
+             .filter(|s| s != "")
+             .collect::<Vec<String>>()
+
+}
+
+fn start_game() -> Game {
+    let word = generate_word();
 
     Game {
         progress: vec!["".to_string(); word.len()],
@@ -51,14 +72,11 @@ fn main() {
 
         io::stdin().read_line(&mut guess).unwrap();
 
-        let guess = guess.trim().to_string();
+        let guess = guess.trim()
+                         .to_string();
 
         if game.guesses.insert(guess.clone()) {
-            if game.word.contains(&guess) {
-                game.update_progress(&guess);
-            } else {
-                game.increment_miss();
-            }
+            game.check_letter(&guess)
         } else {
             println!("{} has already been guessed", guess);
         }
@@ -66,14 +84,12 @@ fn main() {
         println!("{:?}", game.progress);
         println!("You missed {} times", game.misses);
 
-        if game.misses == 10 {
-            println!("You lose");
-            break;
-        }
-
-        if game.progress == game.word {
-            println!("You win");
-            break;
+        match game.check_status() {
+            Some(x) => {
+                println!("{}", x);
+                break;
+            },
+            None    => continue,
         }
     }
 
