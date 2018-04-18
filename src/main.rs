@@ -54,7 +54,7 @@ impl Handler for Server {
             format!("You win, starting a new game!")
         } else { res };
 
-        self.out.send(res)
+        self.out.broadcast(res)
     }
 
     fn on_close(&mut self, code: CloseCode, reason: &str) {
