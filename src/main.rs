@@ -30,6 +30,14 @@ impl Game {
         }
     }
 
+    fn status(&self) -> &str {
+        if self.misses > 10 {
+            "lose"
+        } else if self.progress == self.word {
+            "win"
+        } else { "active" }
+    }
+
 }
 
 struct Server {
@@ -46,20 +54,15 @@ impl Handler for Server {
             check_letter(&mut self.game, &string_msg);
         };
 
-        let res = if self.game.misses > 10 {
-            "lose"
-        } else if self.game.progress == self.game.word {
-            "win"
-        } else { "active" };
+        let status = self.game.status();
 
         let progress = self.game.progress.clone();
         let guesses = self.game.guesses.clone()
                                        .into_iter()
-                                       .collect::<Vec<String>>()
-                                       .join(", ");
+                                       .collect::<Vec<String>>();
 
         self.out.broadcast(json::stringify(object!{
-            "status"  => res,
+            "status"  => status,
             "progress" => progress,
             "guesses" => guesses,
             "misses"  => self.game.misses
