@@ -1,6 +1,9 @@
 extern crate names;
 extern crate ws;
 
+#[macro_use]
+extern crate json;
+
 use std::collections::HashSet;
 use names::{Generator, Name};
 use ws::{listen, Handler, Sender, Result, Message, CloseCode};
@@ -39,22 +42,28 @@ impl Handler for Server {
     fn on_message(&mut self, msg: Message) -> Result<()> {
         let string_msg = msg.to_string();
 
-        let res = if self.game.guesses.insert(string_msg.clone()) {
+        if self.game.guesses.insert(string_msg.clone()) {
             check_letter(&mut self.game, &string_msg);
-            format!("word: {:?}, misses: {:?}", self.game.progress, self.game.misses)
-        } else {
-            format!("{} has already been guessed", msg)
         };
 
-        let res = if self.game.misses == 10 {
-            self.game = start_game();
-            format!("You lose, try again...")
+        let res = if self.game.misses > 10 {
+            "lose"
         } else if self.game.progress == self.game.word {
-            self.game = start_game();
-            format!("You win, starting a new game!")
-        } else { res };
+            "win"
+        } else { "active" };
 
-        self.out.broadcast(res)
+        let progress = self.game.progress.clone();
+        let guesses = self.game.guesses.clone()
+                                       .into_iter()
+                                       .collect::<Vec<String>>()
+                                       .join(", ");
+
+        self.out.broadcast(json::stringify(object!{
+            "status"  => res,
+            "progress" => progress,
+            "guesses" => guesses,
+            "misses"  => self.game.misses
+        }))
     }
 
     fn on_close(&mut self, code: CloseCode, reason: &str) {
