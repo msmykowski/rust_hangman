@@ -5,7 +5,9 @@ extern crate ws;
 extern crate json;
 
 use std::collections::HashSet;
+use std::sync::mpsc;
 use names::{Generator, Name};
+use std::thread;
 use ws::{listen, Handler, Sender, Result, Message, CloseCode};
 
 #[derive(Debug)]
@@ -42,7 +44,7 @@ impl Game {
 
 struct Server {
     out: Sender,
-    game: Game,
+    tx: std::sync::mpsc::Sender<String>,
 }
 
 impl Handler for Server {
@@ -50,22 +52,13 @@ impl Handler for Server {
     fn on_message(&mut self, msg: Message) -> Result<()> {
         let string_msg = msg.to_string();
 
-        if self.game.guesses.insert(string_msg.clone()) {
-            check_letter(&mut self.game, &string_msg);
-        };
-
-        let status = self.game.status();
-
-        let progress = self.game.progress.clone();
-        let guesses = self.game.guesses.clone()
-                                       .into_iter()
-                                       .collect::<Vec<String>>();
+        self.tx.send(string_msg).unwrap();
 
         self.out.broadcast(json::stringify(object!{
-            "status"  => status,
-            "progress" => progress,
-            "guesses" => guesses,
-            "misses"  => self.game.misses
+            "status"  => "status",
+            "progress" => "progress",
+            "guesses" => "guesses",
+            "misses" => "misses",
         }))
     }
 
@@ -110,5 +103,25 @@ fn start_game() -> Game {
 }
 
 fn main() {
-    listen("127.0.0.1:3000", |out| Server { out: out, game: start_game() } ).unwrap();
+    let (tx, rx) = mpsc::channel::<String>();
+
+    thread::spawn(move || {
+        let mut game = start_game();
+        for received in rx {
+            if game.guesses.insert(received.clone()) {
+                check_letter(&mut game, &received);
+            };
+
+            let status = game.status();
+
+            let progress = game.progress.clone();
+            let guesses = game.guesses.clone()
+                                      .into_iter()
+                                      .collect::<Vec<String>>();
+            println!("{}, {:?}, {:?}", game.misses, game.guesses, game.word);
+        }
+    });
+
+
+    listen("127.0.0.1:3000", |out| Server { out: out, tx: mpsc::Sender::clone(&tx) } ).unwrap();
 }
