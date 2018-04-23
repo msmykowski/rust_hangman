@@ -4,11 +4,53 @@ extern crate ws;
 #[macro_use]
 extern crate json;
 
+use names::{Generator, Name};
 use std::collections::HashSet;
 use std::sync::mpsc;
-use names::{Generator, Name};
 use std::thread;
-use ws::{listen, Handler, Sender, Result, Message, CloseCode};
+use ws::{listen, CloseCode, Handler, Message, Result, Sender};
+
+trait Job : Send {
+    fn execute(&self, game: &mut Game);
+}
+
+struct Request {
+    out: Sender,
+    msg: String,
+}
+
+impl Request {
+    fn new(msg: String, out: Sender) -> Request {
+        Request {
+            msg: msg,
+            out: out
+        }
+    }
+}
+
+impl Job for Request {
+    fn execute(&self, mut game: &mut Game) {
+        if game.guesses.insert(self.msg.clone()) {
+            check_letter(&mut game, &self.msg);
+        };
+
+        let status = game.status();
+
+        let progress = game.progress.clone();
+        let guesses = game.guesses.clone().into_iter().collect::<Vec<String>>();
+        println!(
+            "guesses: {:?}, progress: {:?}, misses: {}, status: {}",
+            guesses, progress, game.misses, status
+        );
+
+        self.out.broadcast(json::stringify(object!{
+            "status"  => game.status(),
+            "progress" => progress,
+            "guesses" => guesses,
+            "misses" => game.misses,
+        })).unwrap();
+    }
+}
 
 #[derive(Debug)]
 struct Game {
@@ -19,7 +61,6 @@ struct Game {
 }
 
 impl Game {
-
     fn increment_miss(&mut self) {
         self.misses += 1;
     }
@@ -37,39 +78,34 @@ impl Game {
             "lose"
         } else if self.progress == self.word {
             "win"
-        } else { "active" }
+        } else {
+            "active"
+        }
     }
-
 }
 
 struct Server {
     out: Sender,
-    tx: std::sync::mpsc::Sender<String>,
+    tx: std::sync::mpsc::Sender<Box<Job>>,
 }
 
 impl Handler for Server {
-
     fn on_message(&mut self, msg: Message) -> Result<()> {
         let string_msg = msg.to_string();
+        self.tx
+            .send(Box::new(Request::new(string_msg, self.out.clone())))
+            .unwrap();
 
-        self.tx.send(string_msg).unwrap();
-
-        self.out.broadcast(json::stringify(object!{
-            "status"  => "status",
-            "progress" => "progress",
-            "guesses" => "guesses",
-            "misses" => "misses",
-        }))
+        Ok(())
     }
 
     fn on_close(&mut self, code: CloseCode, reason: &str) {
         match code {
             CloseCode::Normal => println!("The client is done with the connection."),
-            CloseCode::Away   => println!("The client is leaving the site."),
+            CloseCode::Away => println!("The client is leaving the site."),
             _ => println!("The client encountered an error: {}", reason),
         }
     }
-
 }
 
 fn check_letter(game: &mut Game, guess: &String) {
@@ -82,13 +118,13 @@ fn check_letter(game: &mut Game, guess: &String) {
 
 fn generate_word() -> Vec<String> {
     let mut generator = Generator::with_naming(Name::Plain);
-    generator.next()
-             .unwrap()
-             .split("")
-             .map(|c| c.to_string())
-             .filter(|s| s != "")
-             .collect::<Vec<String>>()
-
+    generator
+        .next()
+        .unwrap()
+        .split("")
+        .map(|c| c.to_string())
+        .filter(|s| s != "")
+        .collect::<Vec<String>>()
 }
 
 fn start_game() -> Game {
@@ -99,29 +135,21 @@ fn start_game() -> Game {
         word: word,
         guesses: HashSet::new(),
         misses: 0,
-      }
+    }
 }
 
 fn main() {
-    let (tx, rx) = mpsc::channel::<String>();
+    let mut game = start_game();
+    let (tx, rx) = mpsc::channel::<Box<Job>>();
 
     thread::spawn(move || {
-        let mut game = start_game();
-        for received in rx {
-            if game.guesses.insert(received.clone()) {
-                check_letter(&mut game, &received);
-            };
-
-            let status = game.status();
-
-            let progress = game.progress.clone();
-            let guesses = game.guesses.clone()
-                                      .into_iter()
-                                      .collect::<Vec<String>>();
-            println!("{}, {:?}, {:?}", game.misses, game.guesses, game.word);
+        for mut received in rx {
+            received.execute(&mut game);
         }
     });
 
-
-    listen("127.0.0.1:3000", |out| Server { out: out, tx: mpsc::Sender::clone(&tx) } ).unwrap();
+    listen("127.0.0.1:3000", |out| Server {
+        out: out,
+        tx: mpsc::Sender::clone(&tx),
+    }).unwrap();
 }
